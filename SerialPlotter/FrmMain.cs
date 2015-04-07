@@ -95,7 +95,7 @@ namespace SerialPlotter
             }
             string comPort = (string)cbComPorts.SelectedItem;
 
-            Port = new SerialPort(comPort, 4800);
+            Port = new SerialPort(comPort, 19200);
 
             try
             {
@@ -115,30 +115,16 @@ namespace SerialPlotter
                     {
                         try
                         {
-                            int lowByte = 0;
-                            int highByte = 0;
-                            List<int> data = new List<int>();
+                            string data = "";
                             while (sp.BytesToRead > 0) {
-                                int input = sp.ReadByte();
-                                if (input >> 5 == 0)
+                                string input = sp.ReadLine().Trim();
+                                if (input.Length > 0)
                                 {
-                                    lowByte = input & 0x1F;
-                                }
-                                else if (input >> 5 == 1)
-                                {
-                                    highByte = input & 0x1F;
-                                    int b = (highByte << 5) | lowByte;
-                                    data.Add(b);
-                                }
-                                else
-                                {
-                                    Console.WriteLine("Bit error!");
+                                    data += input + "\n";
                                 }
                             }
-                            if (data.Count > 0)
-                            {
-                                Invoke(new EventHandler(ProcessData), data, EventArgs.Empty);
-                            }
+                            
+                            Invoke(new EventHandler(ProcessData), data, EventArgs.Empty);
                         }
                         catch (Exception)
                         {
@@ -159,25 +145,29 @@ namespace SerialPlotter
         const double SAMPLE_FREQ = 300;
         private void ProcessData(object sender, EventArgs e)
         {
-            List<int> dataPoints = (List<int>)sender;
+            string[] dataPoints = ((string)sender).Split('\n');
 
-            foreach (int y in dataPoints)
+            foreach (String data in dataPoints)
             {
-                x++;
-                if (AmplitudeData.Points.Count > 127)
+                int y;
+                if (int.TryParse(data, out y))
                 {
-                    AmplitudeData.Points.RemoveAt(0);
+                    x++;
+                    if (AmplitudeData.Points.Count > 127)
+                    {
+                        AmplitudeData.Points.RemoveAt(0);
+                    }
+                    if (FFTSamples.Count > FFT_SAMPLES - 1)
+                    {
+                        FFTSamples.RemoveAt(0);
+                    }
+                    AmplitudeData.Points.Add(new DataPoint((double)x, (double)(y)*5/1024.0));
+                    FFTSamples.Add(new Complex(y,0));
                 }
-                if (FFTSamples.Count > FFT_SAMPLES - 1)
-                {
-                    FFTSamples.RemoveAt(0);
-                }
-                AmplitudeData.Points.Add(new DataPoint((double)x, (double)(y)*5/1024.0));
-                FFTSamples.Add(new Complex(y,0));
             }
             Model.InvalidatePlot(true);
 
-            if ((x%3) == 0 && FFTSamples.Count == FFT_SAMPLES)
+            if (FFTSamples.Count == FFT_SAMPLES)
             {
                 Complex[] fftOut = new Complex[FFTSamples.Count];
                 FFTSamples.CopyTo(fftOut);
